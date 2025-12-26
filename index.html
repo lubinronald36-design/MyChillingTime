@@ -99,9 +99,9 @@
 
       // Load key wav buffer
       setStatus("loading sounds…");
-      log("Loading key.wav…");
-      keyBuffer = await fetchAudioBuffer("key.wav");
-      log("Loaded key.wav ✅");
+      log("Loading key.mp3…");
+      keyBuffer = await fetchAudioBuffer("key.mp3");
+      log("Loaded key,mp3 ✅");
 
       // Try to warm-up beat file by loading metadata
       beatEl.addEventListener("loadeddata", () => log("beat.mp3 loaded ✅"));
