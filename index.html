@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Interactive Music App (Test)</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 0; padding: 24px; background:#0b1220; color:#e8eefc; }
+    .card { max-width: 760px; margin: 0 auto; background:#101b33; border:1px solid #22355f; border-radius:16px; padding:20px; }
+    button { background:#2d6cff; color:white; border:0; padding:12px 16px; border-radius:12px; font-weight:700; cursor:pointer; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:12px 0; }
+    kbd { background:#0b1220; border:1px solid #2a3f73; padding:6px 10px; border-radius:10px; }
+    .log { background:#0b1220; border:1px solid #22355f; border-radius:12px; padding:12px; min-height:64px; white-space:pre-wrap; }
+    .small { opacity:.8; font-size:14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Interactive Music App (Test)</h1>
+    <p class="small">
+      Click <b>Start Audio</b> once (browser requires it). Then press keys:
+      <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd>
+    </p>
+
+    <div class="row">
+      <button id="startBtn">Start Audio</button>
+      <button id="beatBtn" disabled>Play / Pause Beat</button>
+      <span id="status" class="small">Status: waiting…</span>
+    </div>
+
+    <h3>Logs</h3>
+    <div id="log" class="log"></div>
+
+    <p class="small">
+      Files needed in the <b>same folder</b> as this HTML:
+      <br>• <b>beat.mp3</b> (background music)
+      <br>• <b>key.wav</b> (keypress sound)
+    </p>
+  </div>
+
+  <script>
+    const logEl = document.getElementById("log");
+    const statusEl = document.getElementById("status");
+    const startBtn = document.getElementById("startBtn");
+    const beatBtn = document.getElementById("beatBtn");
+
+    const KEYS = new Set(["a","s","d","f","j","k","l"]);
+
+    let audioReady = false;
+    let beatPlaying = false;
+
+    // Use Web Audio for reliable key sound (low latency)
+    let audioCtx;
+    let beatEl;        // HTMLAudioElement for beat
+    let beatSource;    // MediaElementAudioSourceNode for beat
+    let beatGain;
+
+    let keyBuffer;     // AudioBuffer for key.wav
+    let keyGain;
+
+    function log(msg) {
+      const t = new Date().toLocaleTimeString();
+      logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
+    }
+
+    function setStatus(msg) {
+      statusEl.textContent = `Status: ${msg}`;
+    }
+
+    async function fetchAudioBuffer(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Could not load ${url} (${res.status})`);
+      const arr = await res.arrayBuffer();
+      return await audioCtx.decodeAudioData(arr);
+    }
+
+    async function initAudio() {
+      // Create context only after user gesture
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Beat element (loops)
+      beatEl = new Audio("beat.mp3");
+      beatEl.loop = true;
+      beatEl.crossOrigin = "anonymous"; // ok even if local, helps on GitHub pages
+
+      // Hook beat into WebAudio so volume stays consistent
+      beatSource = audioCtx.createMediaElementSource(beatEl);
+      beatGain = audioCtx.createGain();
+      beatGain.gain.value = 0.7;
+
+      // Key sound chain
+      keyGain = audioCtx.createGain();
+      keyGain.gain.value = 0.9;
+
+      // connect
+      beatSource.connect(beatGain).connect(audioCtx.destination);
+      keyGain.connect(audioCtx.destination);
+
+      // Load key wav buffer
+      setStatus("loading sounds…");
+      log("Loading key.wav…");
+      keyBuffer = await fetchAudioBuffer("key.wav");
+      log("Loaded key.wav ✅");
+
+      // Try to warm-up beat file by loading metadata
+      beatEl.addEventListener("loadeddata", () => log("beat.mp3 loaded ✅"));
+      beatEl.addEventListener("error", () => log("beat.mp3 failed to load ❌ (check file name)"));
+
+      audioReady = true;
+      beatBtn.disabled = false;
+      startBtn.disabled = true;
+      setStatus("ready — press keys!");
+      log("Audio ready. Click Play/Pause Beat or press keys.");
+    }
+
+    function playKeySound() {
+      if (!audioReady) return;
+
+      // create new source each time (one-shot)
+      const src = audioCtx.createBufferSource();
+      src.buffer = keyBuffer;
+
+      // tiny random pitch for “solo” feel
+      src.playbackRate.value = 0.92 + Math.random() * 0.2;
+
+      src.connect(keyGain);
+      src.start(0);
+    }
+
+    async function ensureRunning() {
+      if (audioCtx && audioCtx.state === "suspended") {
+        await audioCtx.resume();
+        log("AudioContext resumed ✅");
+      }
+    }
+
+    startBtn.addEventListener("click", async () => {
+      try {
+        setStatus("starting…");
+        await initAudio();
+        await ensureRunning();
+      } catch (e) {
+        setStatus("error");
+        log("ERROR: " + e.message);
+      }
+    });
+
+    beatBtn.addEventListener("click", async () => {
+      if (!audioReady) return;
+      await ensureRunning();
+
+      if (!beatPlaying) {
+        try {
+          await beatEl.play();
+          beatPlaying = true;
+          beatBtn.textContent = "Play / Pause Beat";
+          setStatus("beat playing — press keys!");
+          log("Beat playing ▶️");
+        } catch (e) {
+          log("Beat play blocked ❌ Click Start Audio first.");
+        }
+      } else {
+        beatEl.pause();
+        beatPlaying = false;
+        setStatus("beat paused — press keys!");
+        log("Beat paused ⏸️");
+      }
+    });
+
+    window.addEventListener("keydown", async (e) => {
+      const k = e.key.toLowerCase();
+      if (!KEYS.has(k)) return;
+
+      if (!audioReady) {
+        log("Press Start Audio first (browser rule).");
+        return;
+      }
+
+      await ensureRunning();
+      playKeySound();
+      log(`Key pressed: ${k.toUpperCase()} 🎵`);
+    });
+  </script>
+</body>
+</html>
