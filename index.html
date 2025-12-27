@@ -104,8 +104,8 @@
       log("Loaded key,mp3 ✅");
 
       // Try to warm-up beat file by loading metadata
-      beatEl.addEventListener("loadeddata", () => log("beat.mp3 loaded ✅"));
-      beatEl.addEventListener("error", () => log("beat.mp3 failed to load ❌ (check file name)"));
+      beatEl.addEventListener("loadeddata", () => log("beat1.mp3 loaded ✅"));
+      beatEl.addEventListener("error", () => log("beat1.mp3 failed to load ❌ (check file name)"));
 
       audioReady = true;
       beatBtn.disabled = false;
